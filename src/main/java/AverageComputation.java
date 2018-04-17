@@ -1,6 +1,5 @@
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -16,7 +15,7 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 
 public class AverageComputation {
 
-    public static class Map extends Mapper<LongWritable, Text, Text, IntWritable> {
+    public static class Map extends Mapper<LongWritable, Text, Text, IntPair> {
         public static final Log log = LogFactory.getLog(Map.class);
         private java.util.Map<String, Integer> sizeSum = null;
         private java.util.Map<String, Integer> recordCount = null;
@@ -33,40 +32,34 @@ public class AverageComputation {
                 String address = entry.getKey();
                 Integer sum = entry.getValue();
                 Integer count = this.recordCount.get(address);
-                context.write(new Text(entry.getKey()), new IntWritable(sum / count));
+                context.write(new Text(entry.getKey()), new IntPair(sum, count));
             }
         }
 
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String line = value.toString();
-            log.info("line: " + line);
             String[] result = line.split(" ");
-            for (String str: result) {
-                log.info(str);
-            }
             String address = result[0];
             String sizeStr = result[result.length - 1];
-            log.info("sizeStr: " + sizeStr);
             int size = sizeStr.equals("-") ? 0 : Integer.parseInt(sizeStr);
-            log.info(String.format("%s: %d(%s)", address, size, sizeStr));
             Integer originSum = this.sizeSum.containsKey(address) ? this.sizeSum.get(address) : 0;
             Integer originCount = this.recordCount.containsKey(address) ? this.recordCount.get(address) : 0;
             this.sizeSum.put(address, originSum + size);
             this.recordCount.put(address, originCount + 1);
         }
     }
-    public static class Reduce extends Reducer<Text, IntWritable, Text, IntWritable> {
 
-        public void reduce(Text key, Iterable<IntWritable> values, Context context)
+    public static class Reduce extends Reducer<Text, IntPair, Text, IntWritable> {
+
+        public void reduce(Text key, Iterable<IntPair> values, Context context)
                 throws IOException, InterruptedException {
             int sum = 0;
             int size = 0;
-            for (IntWritable val : values) {
-                sum += val.get();
-                size++;
+            for (IntPair pair : values) {
+                sum += pair.getFirst();
+                size += pair.getSecond();
             }
             context.write(key, new IntWritable(sum / size));
-
         }
     }
 
@@ -75,8 +68,12 @@ public class AverageComputation {
         Configuration conf = new Configuration();
         Job job = new Job(conf, "average-computation-hadoop");
         job.setJarByClass(AverageComputation.class);
+
+        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputValueClass(IntPair.class);
         job.setOutputKeyClass(Text.class);
         job.setOutputValueClass(IntWritable.class);
+
 
         job.setMapperClass(Map.class);
         job.setReducerClass(Reduce.class);
