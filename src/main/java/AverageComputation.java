@@ -1,4 +1,6 @@
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -16,6 +18,24 @@ public class AverageComputation {
 
     public static class Map extends Mapper<LongWritable, Text, Text, IntWritable> {
         public static final Log log = LogFactory.getLog(Map.class);
+        private java.util.Map<String, Integer> sizeSum = null;
+        private java.util.Map<String, Integer> recordCount = null;
+
+        @Override
+        protected void setup(Context context) throws IOException, InterruptedException {
+            this.sizeSum = new HashMap<String, Integer>();
+            this.recordCount = new HashMap<String, Integer>();
+        }
+
+        @Override
+        protected void cleanup(Context context) throws IOException, InterruptedException {
+            for (java.util.Map.Entry<String, Integer> entry: this.sizeSum.entrySet()) {
+                String address = entry.getKey();
+                Integer sum = entry.getValue();
+                Integer count = this.recordCount.get(address);
+                context.write(new Text(entry.getKey()), new IntWritable(sum / count));
+            }
+        }
 
         public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
             String line = value.toString();
@@ -29,7 +49,10 @@ public class AverageComputation {
             log.info("sizeStr: " + sizeStr);
             int size = sizeStr.equals("-") ? 0 : Integer.parseInt(sizeStr);
             log.info(String.format("%s: %d(%s)", address, size, sizeStr));
-            context.write(new Text(address), new IntWritable(size));
+            Integer originSum = this.sizeSum.containsKey(address) ? this.sizeSum.get(address) : 0;
+            Integer originCount = this.recordCount.containsKey(address) ? this.recordCount.get(address) : 0;
+            this.sizeSum.put(address, originSum + size);
+            this.recordCount.put(address, originCount + 1);
         }
     }
     public static class Reduce extends Reducer<Text, IntWritable, Text, IntWritable> {
@@ -42,7 +65,8 @@ public class AverageComputation {
                 sum += val.get();
                 size++;
             }
-            context.write(key, new IntWritable(sum/size));
+            context.write(key, new IntWritable(sum / size));
+
         }
     }
 
