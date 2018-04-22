@@ -1,9 +1,6 @@
 import java.io.IOException;
 import java.util.HashMap;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.conf.*;
 import org.apache.hadoop.io.*;
@@ -16,14 +13,26 @@ import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 public class AverageComputation {
 
     public static class Map extends Mapper<LongWritable, Text, Text, IntPair> {
-        public static final Log log = LogFactory.getLog(Map.class);
+
         private java.util.Map<String, Integer> sizeSum = null;
         private java.util.Map<String, Integer> recordCount = null;
 
         @Override
-        protected void setup(Context context) throws IOException, InterruptedException {
+        protected void setup(Context context) {
             this.sizeSum = new HashMap<String, Integer>();
             this.recordCount = new HashMap<String, Integer>();
+        }
+
+        public void map(LongWritable key, Text value, Context context) {
+            String line = value.toString();
+            String[] result = line.split(" ");
+            String address = result[0];
+            String sizeStr = result[result.length - 1];
+            int size = sizeStr.equals("-") ? 0 : Integer.parseInt(sizeStr);
+            Integer originSum = this.sizeSum.containsKey(address) ? this.sizeSum.get(address) : 0;
+            Integer originCount = this.recordCount.containsKey(address) ? this.recordCount.get(address) : 0;
+            this.sizeSum.put(address, originSum + size);
+            this.recordCount.put(address, originCount + 1);
         }
 
         @Override
@@ -34,18 +43,6 @@ public class AverageComputation {
                 Integer count = this.recordCount.get(address);
                 context.write(new Text(entry.getKey()), new IntPair(sum, count));
             }
-        }
-
-        public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
-            String line = value.toString();
-            String[] result = line.split(" ");
-            String address = result[0];
-            String sizeStr = result[result.length - 1];
-            int size = sizeStr.equals("-") ? 0 : Integer.parseInt(sizeStr);
-            Integer originSum = this.sizeSum.containsKey(address) ? this.sizeSum.get(address) : 0;
-            Integer originCount = this.recordCount.containsKey(address) ? this.recordCount.get(address) : 0;
-            this.sizeSum.put(address, originSum + size);
-            this.recordCount.put(address, originCount + 1);
         }
     }
 
